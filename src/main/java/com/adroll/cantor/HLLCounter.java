@@ -311,10 +311,12 @@ public class HLLCounter implements Serializable {
     m = M.length;
     p = (byte)Math.min(p, h.getP());
     a = getAlpha(m);
+
     if(intersectable && h.isIntersectable()) {
       ts.addAll(h.getMinHash());
+      int curSize = ts.size();
       int mink = Math.min(k, h.getK());
-      for(int i = 0; i < (ts.size() - mink); i++) {
+      for(int i = 0; i < (curSize - mink); i++) {
         ts.pollLast();
       }
     } else {
