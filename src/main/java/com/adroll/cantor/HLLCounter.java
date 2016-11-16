@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.HashMap;
 
 /** <code>HLLCounter</code> allows for cardinality estimation of 
     large sets with a compact data structure.
@@ -225,8 +226,12 @@ public class HLLCounter implements Serializable {
      least <code>long</code>s seen thus far.
 
      @param v the <code>String</code> to insert
+     @param md5Cache a <code>HashMap<String, long></code> of strings
+     mapped to md5 long values
+     @param updateCache a <code>boolean</code> indicating whether or not
+     to cache a newly calculated MD5 hash value
    */
-  public void put(String v) {
+  public void put(String v, HashMap<String, long> md5Cache, boolean updateCache) {
     if(md == null) {
       try {
         md = MessageDigest.getInstance("MD5");
@@ -234,12 +239,20 @@ public class HLLCounter implements Serializable {
         throw new RuntimeException("Failed to instantiate hash algorithm.");
       }
     }
-    md.update(v.getBytes());
-    byte[] b = md.digest();
-    md.reset();
-    //We just want 64 bits
-    b = new byte[] { b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7] };
-    long x = makelong(b);
+    long x;
+    if (md5Cache == null || md5Cache.get(v) == null) {
+      md.update(v.getBytes());
+      byte[] b = md.digest();
+      md.reset();
+      //We just want 64 bits
+      b = new byte[] { b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7] };
+      x = makelong(b);
+      if (updateCache) {
+        md5Cache.put(v, x);
+      }
+    } else {
+      x = md5Cache.get(v);
+    }
     if(intersectable) {
       ts.add(x);
       if(ts.size() > k) {
@@ -249,6 +262,18 @@ public class HLLCounter implements Serializable {
     int idx = (int)(x >>> (64 - p));
     long w = x << p;
     M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+  }
+
+  /**
+     Insert an element into the <code>HLLCounter</code> structure.
+     <p>
+     Method signature for backwards compatibility.
+     </p>
+
+     @param v the <code>String</code> to insert
+   */
+  public void put(String v) {
+    put(v, null, false);
   }
 
   /**
