@@ -231,7 +231,7 @@ public class HLLCounter implements Serializable {
      @param updateCache a <code>boolean</code> indicating whether or not
      to cache a newly calculated MD5 hash value
    */
-  public void put(String v, ConcurrentHashMap<String, long> md5Cache, boolean updateCache) {
+  public void put(ConcurrentHashMap<String, Long> md5Cache, boolean updateCache, String v) {
     if(md == null) {
       try {
         md = MessageDigest.getInstance("MD5");
@@ -273,7 +273,7 @@ public class HLLCounter implements Serializable {
      @param v the <code>String</code> to insert
    */
   public void put(String v) {
-    put(v, null, false);
+    put(null, false, v);
   }
 
   /**
