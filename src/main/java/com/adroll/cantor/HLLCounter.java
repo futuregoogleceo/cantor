@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.TreeSet;
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** <code>HLLCounter</code> allows for cardinality estimation of 
     large sets with a compact data structure.
@@ -226,12 +226,12 @@ public class HLLCounter implements Serializable {
      least <code>long</code>s seen thus far.
 
      @param v the <code>String</code> to insert
-     @param md5Cache a <code>HashMap<String, long></code> of strings
-     mapped to md5 long values
+     @param md5Cache a <code>ConcurrentHashMap<String, long></code> of
+     strings mapped to md5 long values
      @param updateCache a <code>boolean</code> indicating whether or not
      to cache a newly calculated MD5 hash value
    */
-  public void put(String v, HashMap<String, long> md5Cache, boolean updateCache) {
+  public void put(String v, ConcurrentHashMap<String, long> md5Cache, boolean updateCache) {
     if(md == null) {
       try {
         md = MessageDigest.getInstance("MD5");
