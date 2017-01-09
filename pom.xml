@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.adroll.cantor</groupId>
   <artifactId>cantor</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
 
   <properties>
     <hadoop.version>2.6.0</hadoop.version>

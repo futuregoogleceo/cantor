@@ -5,6 +5,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.TreeSet;
 
 import org.apache.hadoop.io.Writable;
@@ -32,7 +33,7 @@ public class HLLWritable implements Writable, Serializable {
       of the contained <code>HLLCounter</code> representation. */
   protected int s;
   /** The HLL structure of the contained <code>HLLCounter</code> representation. */
-  protected byte[] M;
+  protected HashMap<Integer, Byte> M;
   /** The contents of the MinHash structure of the contained 
       <code>HLLCounter</code> representation.*/
   protected long[] minhash;
@@ -66,11 +67,11 @@ public class HLLWritable implements Writable, Serializable {
                       structure
      @param s         the <code>int</code> number of elements in the 
                       MinHash structure
-     @param M         the <code>byte[]</code> HLL structure
+     @param M         the <code>HashMap</code> HLL structure
      @param minhash   the <code>long[]</code> elements in the MinHash 
                       structure
   */
-  public HLLWritable(byte p, int k, int s, byte[] M, long[] minhash){
+  public HLLWritable(byte p, int k, int s, HashMap<Integer, Byte> M, long[] minhash){
     this.p = p;
     this.k = k;
     this.s = s;
@@ -86,7 +87,7 @@ public class HLLWritable implements Writable, Serializable {
   */
   public void set(HLLCounter h) {
     p = h.getP();
-    M = h.getByteArray();
+    M = h.getByteHashMap();
     k = h.getK();
     if(h.isIntersectable()){
       s = h.getMinHash().size();
@@ -98,7 +99,7 @@ public class HLLWritable implements Writable, Serializable {
     }
     int i = 0;
     if(h.getMinHash() != null){
-      for(Long l : h.getMinHash()){
+      for(Long l : h.getMinHash().toArray(new Long[0])){
         minhash[i] = l;
         i++;
       }
@@ -148,7 +149,7 @@ public class HLLWritable implements Writable, Serializable {
 
     byte newP = (byte)Math.min(p, other.p);
     int newK = Math.min(k, other.k);
-    byte[] newM = HLLCounter.safeUnion(M, other.M);
+    HashMap<Integer, Byte> newM = HLLCounter.safeUnion(M, other.M, (int)Math.pow(2, p), (int)Math.pow(2, other.p));
     // newMinhash will hold at most newK elements, but possibly less
     long[] newMinhash = new long[newK];
     int i=0, j=0;
@@ -219,8 +220,8 @@ public class HLLWritable implements Writable, Serializable {
         out.writeByte(p);
         out.writeInt(k);
         out.writeInt(s);
-        for(byte b : M){
-          out.writeByte(b);
+        for (int i=0; i < (int)Math.pow(2, p); i++){
+          out.writeByte((byte)(M.containsKey(i) ? M.get(i) : 0));
         }
         for(int i=0; i < s; i++){
           out.writeLong(minhash[i]);
@@ -253,12 +254,16 @@ public class HLLWritable implements Writable, Serializable {
       if (p < 0) {
         p = (byte) -p;
         int m = (int)Math.pow(2, p);
-        M = new byte[m];
+        M = new HashMap<>();
       } else {
         int m = (int)Math.pow(2, p);
-        M = new byte[m];
+        byte b = 0;
+        M = new HashMap<>();
         for(int i = 0; i < m; i++) {
-          M[i] = in.readByte();
+          b = in.readByte();
+          if (b != 0) {
+            M.put(i, b);
+          }
         }
       }
       minhash = new long[s];
@@ -272,7 +277,7 @@ public class HLLWritable implements Writable, Serializable {
          */
         int idx = (int)(x >>> (64 - p));
         long w = x << p;
-        M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+        M.put(idx, (byte)Math.max(M.containsKey(idx) ? M.get(idx) : 0, Long.numberOfLeadingZeros(w) + 1));
       }
     } catch(Exception e) {
       throw new IOException(e);
@@ -289,7 +294,7 @@ public class HLLWritable implements Writable, Serializable {
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    result = prime * result + Arrays.hashCode(M);
+    result = prime * result + M.hashCode();
     result = prime * result + k;
     result = prime * result + Arrays.hashCode(minhash);
     result = prime * result + p;
@@ -323,7 +328,7 @@ public class HLLWritable implements Writable, Serializable {
       return false;
     }
     HLLWritable other = (HLLWritable) obj;
-    if (!Arrays.equals(M, other.M)) {
+    if (!M.equals(other.M)) {
       return false;
     }
     if (k != other.k) {

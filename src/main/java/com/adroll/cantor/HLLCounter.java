@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.HashMap;
 
 /** <code>HLLCounter</code> allows for cardinality estimation of 
     large sets with a compact data structure.
@@ -32,14 +33,14 @@ public class HLLCounter implements Serializable {
       HLL precision, <code>MIN_P &lt;= p &lt;= MAX_P</code>
   */
   private byte p;
-  /** 2^<code>p</code>, length of HLL array */
+  /** 2^<code>p</code>, maximum length of HLL HashMap */
   private int m;
   /** integral term for estimation, derived from 
       <code>m</code> 
   */
   private double a;
-  /** HLL array */
-  private byte[] M;
+  /** HLL HashMap */
+  private HashMap<Integer, Byte> M;
   /** whether MinHash structure is kept */
   private boolean intersectable;
   /** MinHash structure */
@@ -152,14 +153,14 @@ public class HLLCounter implements Serializable {
                           intersectable
      @param k             the <code>int</code> precision of MinHash 
                           structure
-     @param M             the <code>byte[]</code> HLL structure of 
-                          length 2^<code>p</code>
+     @param M             the <code>HashMap</code> HLL structure of 
+                          length &lte; 2^<code>p</code>
      @param ts            the <code>TreeSet&lt;Long&gt;</code> MinHash structure of 
                           length <code>k</code>
    */
-  public HLLCounter(byte p, boolean intersectable, int k , byte[] M, TreeSet<Long> ts) {
-    if((int)Math.pow(2, p) != M.length) {
-      throw new IllegalArgumentException("Byte array must have length = 2^precision.");
+  public HLLCounter(byte p, boolean intersectable, int k , HashMap<Integer, Byte> M, TreeSet<Long> ts) {
+    if((int)Math.pow(2, p) < M.size()) {
+      throw new IllegalArgumentException("Byte HashMap must have length <= 2^precision.");
     }
     if(intersectable && ts == null) {
       throw new IllegalArgumentException("Can't have a null MinHash for intersectable HLLCounters.");
@@ -202,7 +203,7 @@ public class HLLCounter implements Serializable {
     this.p = p;
     m = (int)Math.pow(2, p);
     a = getAlpha(m);
-    M = new byte[m];
+    M = new HashMap<>();
     this.intersectable = intersectable;
     this.k = k;
     if(intersectable) {
@@ -217,7 +218,7 @@ public class HLLCounter implements Serializable {
      <p>
      The <code>String v</code> is hashed to a <code>long</code>, 
      which, by the HLL algorithm is inserted in the HLL 
-     <code>byte[]</code>.
+     <code>HashMap</code>.
      <p>
      Additionally, if this <code>HLLCounter</code> is intersectable, 
      the <code>long</code> is added to the MinHash 
@@ -248,7 +249,7 @@ public class HLLCounter implements Serializable {
     }
     int idx = (int)(x >>> (64 - p));
     long w = x << p;
-    M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+    M.put(idx, (byte)Math.max(M.containsKey(idx) ? M.get(idx) : 0 , Long.numberOfLeadingZeros(w) + 1));
   }
 
   /**
@@ -280,14 +281,14 @@ public class HLLCounter implements Serializable {
     if (intersectable && ts.size() < k) {
       return ts.size();
     }
-    return (long)Math.round(estimateSize(M, a));
+    return (long)Math.round(estimateSize(M, m, a));
   }
 
   /**
      Clears all data in the HLL and MinHash structures.
   */
   public void clear() {
-    M = new byte[m];
+    M = new HashMap<>();
     if(intersectable) {
       ts.clear();
     }      
@@ -307,9 +308,9 @@ public class HLLCounter implements Serializable {
      @param h the <code>HLLCounter</code> to combine into this one
    */
   public void combine(HLLCounter h) {
-    M = safeUnion(this.getByteArray(), h.getByteArray());
-    m = M.length;
+    M = safeUnion(this.getByteHashMap(), h.getByteHashMap(), this.m, (int)Math.pow(2, h.getP()));
     p = (byte)Math.min(p, h.getP());
+    m = (int)Math.pow(2, p);
     a = getAlpha(m);
 
     if(intersectable && h.isIntersectable()) {
@@ -360,18 +361,18 @@ public class HLLCounter implements Serializable {
      @param q the <code>byte</code> new precision
   */
   public void fold(byte q) {
-    M = safeFold(M, q);
-    m = M.length;
+    M = safeFold(M, m, q);
     p = q;
+    m = (int)Math.pow(2, p);
     a = getAlpha(m);
   }
 
   /**
      Returns the raw HLL structure.
 
-     @return the <code>byte[]</code> of the HLL
+     @return the <code>HashMap</code> of the HLL
   */
-  public byte[] getByteArray() {
+  public HashMap<Integer, Byte> getByteHashMap() {
     return M;
   }
 
@@ -541,22 +542,26 @@ public class HLLCounter implements Serializable {
      This method is primarily used for non-destructive unions,
      unlike the {@link #combine(HLLCounter h)} method.
      
-     @param Q the <code>byte[]</code> first HLL structure 
+     @param Q the <code>HashMap</code> first HLL structure 
               to union
-     @param R the <code>byte[]</code> second HLL structure 
+     @param R the <code>HashMap</code> second HLL structure 
               to union
+     @param q_max_len the maximum length that
+              <code>Q</code> is allowed to reach
+     @param r_max_len the maximum length that
+              <code>R</code> is allowed to reach
 
-     @return  the <code>byte[]</code> HLL structure of 
+     @return  the <code>HashMap</code> HLL structure of 
               the union
   */
-  public static byte[] safeUnion(byte[] Q, byte[] R) {
-    byte q = (byte)Math.round((Math.log(Q.length)/LOG_2));
-    byte r = (byte)Math.round((Math.log(R.length)/LOG_2));
+  public static HashMap<Integer, Byte> safeUnion(HashMap<Integer, Byte> Q, HashMap<Integer, Byte> R, int q_max_len, int r_max_len) {
+    byte q = (byte)Math.round((Math.log(q_max_len)/LOG_2));
+    byte r = (byte)Math.round((Math.log(r_max_len)/LOG_2));
     byte minp = (byte)Math.min(q, r);
-    byte[] S = safeFold(Q, minp);
-    byte[] T = safeFold(R, minp);
-    for(int i = 0; i < S.length; i++) {
-      S[i] = (byte)Math.max(S[i], T[i]);
+    HashMap<Integer, Byte> S = safeFold(Q, q_max_len, minp);
+    HashMap<Integer, Byte> T = safeFold(R, r_max_len, minp);
+    for (Integer k : T.keySet()) {
+      S.put(k, (byte)Math.max(S.containsKey(k) ? S.get(k) : 0, T.get(k)));
     }
     return S;
   }
@@ -566,30 +571,32 @@ public class HLLCounter implements Serializable {
      <p>
      This is a non-destructive form of {@link #fold(byte q)}.
 
-     @param N the <code>byte[]</code>HLL structure to fold
+     @param N the <code>HashMap</code>HLL structure to fold
+     @param n_max_len the maximum length that
+              <code>N</code> is allowed to reach
      @param q the <code>byte</code> new precision
 
-     @return  the <code>byte[]</code> HLL structure of
+     @return  the <code>HashMap</code> HLL structure of
               reduced precision
   */
-  private static byte[] safeFold(byte[] N, byte q) {
-    byte r = (byte)Math.round((Math.log(N.length)/LOG_2));
+  private static HashMap<Integer, Byte> safeFold(HashMap<Integer, Byte> N, int n_max_len, byte q) {
+    byte r = (byte)Math.round((Math.log(n_max_len)/LOG_2));
     if(q >= r) {
       return N;
     }
-    byte[] R;
+    HashMap<Integer, Byte> R;
     if(r - q > 1) {
-      N = safeFold(N, (byte)(q + 1));
+      N = safeFold(N, n_max_len, (byte)(q + 1));
     }
-    int o = N.length/2;
-    R = new byte[o];
+    int o = (int)Math.pow(2, q);
+    R = new HashMap<>();
     for(int i = 0; i < o; i++) {
-      byte b0 = N[2 * i];
-      byte b1 = N[2 * i + 1];
+      byte b0 = N.containsKey(2 * i) ? N.get(2 * i) : 0;
+      byte b1 = N.containsKey(2 * i + 1) ? N.get(2 * i + 1) : 0;
       if(b0 == 0 && b1 == 0) {
-        R[i] = (byte)0;
+        R.put(i, (byte)0);
       } else {
-        R[i] = (byte)(b0 + 1);
+        R.put(i, (byte)(b0 + 1));
       }
     }
     return R;
@@ -607,20 +614,26 @@ public class HLLCounter implements Serializable {
      @return the <code>double</code> estimate of cardinality
   */
   private static double totalSize(HLLCounter ... hs) {
-    byte[] R = new byte[hs[0].getByteArray().length];
+    HashMap<Integer, Byte> R = new HashMap<>();
+    int m = (int)Math.pow(2, hs[0].getP());
     for(int i = 0; i < hs.length; i++) {
-      R = safeUnion(R, hs[i].getByteArray());
+      int m2 = (int)Math.pow(2, hs[i].getP());
+      R = safeUnion(R, hs[i].getByteHashMap(), m, m2);
+      m = Math.min(m, m2);
     }
-    return estimateSize(R, getAlpha(R.length));
+    return estimateSize(R, m, getAlpha(m));
   }
 
 
   private static double totalSize(List<HLLCounter> hs) {
-    byte[] R = new byte[hs.get(0).getByteArray().length];
+    HashMap<Integer, Byte> R = new HashMap<>();
+    int m = (int)Math.pow(2, hs.get(0).getP());
     for(int i = 0; i < hs.size(); i++) {
-      R = safeUnion(R, hs.get(i).getByteArray());
+      int m2 = (int)Math.pow(2, hs.get(i).getP());
+      R = safeUnion(R, hs.get(i).getByteHashMap(), m, m2);
+      m = Math.min(m, m2);
     }
-    return estimateSize(R, getAlpha(R.length));
+    return estimateSize(R, m, getAlpha(m));
   }
 
 
@@ -651,25 +664,28 @@ public class HLLCounter implements Serializable {
      a great range for the HLL algorithm. Past that range, a 
      classic HLL algorithm is used.
 
-     @param Q     the <code>byte[]</code> HLL structure to 
+     @param Q     the <code>HashMap</code> HLL structure to 
                   estimate the size of
+     @param q_max_len the maximum length that
+                  <code>Q</code> is allowed to reach
      @param alpha the <code>double</code> estimate of the 
                   integral term
 
      @return      the <code>double</code> estimate of the 
                   cardinality
   */
-  private static double estimateSize(byte[] Q, double alpha) {
+  private static double estimateSize(HashMap<Integer, Byte> Q, int q_max_len, double alpha) {
     double E = 0.0;
     int count = 0;
-    int q = Q.length;
+    int q = q_max_len;
     byte w = (byte)Math.round(Math.log(q)/LOG_2);
-    for(byte b : Q) {
-      if(b == (byte)0) {
-        count++;
-      }
+    for(byte b : Q.values()) {
       E += Math.pow(2.0, -1 * b);
     }
+    // For all the values that would be 0s if this was an array
+    count += q_max_len - Q.size();
+    E += q_max_len - Q.size();
+
     E = alpha * Math.pow(q, 2) * (1.0/E);
     E = (E < 5*q) ? (E - estimateBias(E, w)) : E;
     double H = (count != 0) ? (q * Math.log(q/((double)count))) : E;

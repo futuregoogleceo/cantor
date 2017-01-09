@@ -135,7 +135,7 @@ public class TestHLLCounter {
     HLLCounter big = new HLLCounter((byte)12);
     fillHLLCounter(big, r, 100000);
     big.fold((byte)8);
-    
+
     assertEquals(big.size(), small.size());
 
     r = new Random(23456L);
