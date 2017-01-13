@@ -6,6 +6,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 /** <code>HLLCounter</code> allows for cardinality estimation of 
     large sets with a compact data structure.
@@ -32,14 +36,16 @@ public class HLLCounter implements Serializable {
       HLL precision, <code>MIN_P &lt;= p &lt;= MAX_P</code>
   */
   private byte p;
+  private byte shardP;
   /** 2^<code>p</code>, length of HLL array */
   private int m;
-  /** integral term for estimation, derived from 
+  private int shards;
+  /** integral term for estimation, derived from
       <code>m</code> 
   */
   private double a;
   /** HLL array */
-  private byte[] M;
+  private byte[][] M;
   /** whether MinHash structure is kept */
   private boolean intersectable;
   /** MinHash structure */
@@ -157,10 +163,10 @@ public class HLLCounter implements Serializable {
      @param ts            the <code>TreeSet&lt;Long&gt;</code> MinHash structure of 
                           length <code>k</code>
    */
-  public HLLCounter(byte p, boolean intersectable, int k , byte[] M, TreeSet<Long> ts) {
-    if((int)Math.pow(2, p) != M.length) {
+  public HLLCounter(byte p, boolean intersectable, int k , byte[][] M, TreeSet<Long> ts) {
+/*    if((int)Math.pow(2, p) != M.length) {
       throw new IllegalArgumentException("Byte array must have length = 2^precision.");
-    }
+    }*/
     if(intersectable && ts == null) {
       throw new IllegalArgumentException("Can't have a null MinHash for intersectable HLLCounters.");
     }
@@ -200,9 +206,11 @@ public class HLLCounter implements Serializable {
       throw new RuntimeException("Failed to instantiate hash algorithm.");
     }    
     this.p = p;
+    this.shards = 1 << (p / 2 + p % 2);
+    this.shardP = (byte)(p / 2);
     m = (int)Math.pow(2, p);
     a = getAlpha(m);
-    M = new byte[m];
+    M = new byte[this.shards][];
     this.intersectable = intersectable;
     this.k = k;
     if(intersectable) {
@@ -247,8 +255,13 @@ public class HLLCounter implements Serializable {
       }
     }
     int idx = (int)(x >>> (64 - p));
+    int idx2 = idx % (m / shards);
+    idx = idx >>> (shardP);
     long w = x << p;
-    M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+    if (M[idx] == null) {
+      M[idx] = new byte[m / shards];
+    }
+    M[idx][idx2] =  (byte)Math.max(M[idx][idx2], Long.numberOfLeadingZeros(w) + 1);
   }
 
   /**
@@ -280,14 +293,14 @@ public class HLLCounter implements Serializable {
     if (intersectable && ts.size() < k) {
       return ts.size();
     }
-    return (long)Math.round(estimateSize(M, a));
+    return (long)Math.round(estimateSize(M, m, a));
   }
 
   /**
      Clears all data in the HLL and MinHash structures.
   */
   public void clear() {
-    M = new byte[m];
+    M = new byte[shards][];
     if(intersectable) {
       ts.clear();
     }      
@@ -307,9 +320,11 @@ public class HLLCounter implements Serializable {
      @param h the <code>HLLCounter</code> to combine into this one
    */
   public void combine(HLLCounter h) {
-    M = safeUnion(this.getByteArray(), h.getByteArray());
-    m = M.length;
+    M = safeUnion(this.getByteArray(), h.getByteArray(), this.m, (1 << h.getP()));
     p = (byte)Math.min(p, h.getP());
+    m = (1 << p);
+    shardP = (byte)(p / 2);
+    shards = (1 << (p / 2 + p % 2));
     a = getAlpha(m);
 
     if(intersectable && h.isIntersectable()) {
@@ -360,9 +375,9 @@ public class HLLCounter implements Serializable {
      @param q the <code>byte</code> new precision
   */
   public void fold(byte q) {
-    M = safeFold(M, q);
-    m = M.length;
+    M = safeFold(M, this.m, q);
     p = q;
+    m = (1 << p);
     a = getAlpha(m);
   }
 
@@ -371,7 +386,7 @@ public class HLLCounter implements Serializable {
 
      @return the <code>byte[]</code> of the HLL
   */
-  public byte[] getByteArray() {
+  public byte[][] getByteArray() {
     return M;
   }
 
@@ -383,6 +398,8 @@ public class HLLCounter implements Serializable {
   public byte getP() {
     return p;
   }
+  public int getShards() { return shards; }
+  public byte getShardP() { return shardP; }
 
   /**
      Returns whether this structure is intersectable.
@@ -549,14 +566,24 @@ public class HLLCounter implements Serializable {
      @return  the <code>byte[]</code> HLL structure of 
               the union
   */
-  public static byte[] safeUnion(byte[] Q, byte[] R) {
-    byte q = (byte)Math.round((Math.log(Q.length)/LOG_2));
-    byte r = (byte)Math.round((Math.log(R.length)/LOG_2));
+  public static byte[][] safeUnion(byte[][] Q, byte[][] R, int q_max_len, int r_max_len) {
+    byte q = (byte)Math.round((Math.log(q_max_len)/LOG_2));
+    byte r = (byte)Math.round((Math.log(r_max_len)/LOG_2));
     byte minp = (byte)Math.min(q, r);
-    byte[] S = safeFold(Q, minp);
-    byte[] T = safeFold(R, minp);
-    for(int i = 0; i < S.length; i++) {
-      S[i] = (byte)Math.max(S[i], T[i]);
+    byte[][] S = safeFold(Q, q_max_len, minp);
+    byte[][] T = safeFold(R, r_max_len, minp);
+    int l = (1 << minp / 2);
+    int shrds = (1 << (minp / 2 + minp % 2));
+    for(int i = 0; i < shrds; i++) {
+      if (S[i] == null && T[i] != null) {
+        S[i] = T[i].clone();
+      } else if (T[i] != null) {
+        for (int j = 0; j < l; j++) {
+          if (T[i][j] > S[i][j]) {
+            S[i][j] = T[i][j];
+          }
+        }
+      }
     }
     return S;
   }
@@ -572,24 +599,57 @@ public class HLLCounter implements Serializable {
      @return  the <code>byte[]</code> HLL structure of
               reduced precision
   */
-  private static byte[] safeFold(byte[] N, byte q) {
-    byte r = (byte)Math.round((Math.log(N.length)/LOG_2));
+  private static byte[][] safeFold(byte[][] N, int n_max_len, byte q) {
+    byte r = (byte)Math.round((Math.log(n_max_len)/LOG_2));
     if(q >= r) {
       return N;
     }
-    byte[] R;
+    byte[][] R;
     if(r - q > 1) {
-      N = safeFold(N, (byte)(q + 1));
+      N = safeFold(N, n_max_len, (byte)(q + 1));
     }
-    int o = N.length/2;
-    R = new byte[o];
-    for(int i = 0; i < o; i++) {
-      byte b0 = N[2 * i];
-      byte b1 = N[2 * i + 1];
-      if(b0 == 0 && b1 == 0) {
-        R[i] = (byte)0;
-      } else {
-        R[i] = (byte)(b0 + 1);
+    int l = (1 << q / 2);
+    int shards = (1 << (q / 2 + q % 2));
+    int o = l / 2;
+    R = new byte[shards][];
+    if (q % 2 == 0) {
+      for (int j = 0; j < shards; j++) {
+        if (N[j * 2] != null || N[j * 2 + 1] != null) {
+          R[j] = new byte[l];
+          for (int i = 0; i < o && N[j * 2] != null; i++) {
+            byte b0 = N[j * 2][2 * i];
+            byte b1 = N[j * 2][2 * i + 1];
+            if (b0 == 0 && b1 == 0) {
+              R[j][i] = (byte) 0;
+            } else {
+              R[j][i] = (byte) (b0 + 1);
+            }
+          }
+          for (int i = 0; i < o && N[j * 2 + 1] != null; i++) {
+            byte b0 = N[j * 2 + 1][2 * i];
+            byte b1 = N[j * 2 + 1][2 * i + 1];
+            if (b0 == 0 && b1 == 0) {
+              R[j][i + o] = (byte) 0;
+            } else {
+              R[j][i + o] = (byte) (b0 + 1);
+            }
+          }
+        }
+      }
+    } else {
+      for (int j = 0; j < shards; j++) {
+        if (N[j] != null) {
+          R[j] = new byte[l];
+          for (int i = 0; i < l; i++) {
+            byte b0 = N[j][2 * i];
+            byte b1 = N[j][2 * i + 1];
+            if (b0 == 0 && b1 == 0) {
+              R[j][i] = (byte) 0;
+            } else {
+              R[j][i] = (byte) (b0 + 1);
+            }
+          }
+        }
       }
     }
     return R;
@@ -606,21 +666,27 @@ public class HLLCounter implements Serializable {
 
      @return the <code>double</code> estimate of cardinality
   */
-  private static double totalSize(HLLCounter ... hs) {
-    byte[] R = new byte[hs[0].getByteArray().length];
+  public static double totalSize(HLLCounter ... hs) {
+    byte[][] R = new byte[hs[0].getShards()][];
+    int m = (1 << hs[0].getP());
     for(int i = 0; i < hs.length; i++) {
-      R = safeUnion(R, hs[i].getByteArray());
+      int m2 = (1 << hs[i].getP());
+      R = safeUnion(R, hs[i].getByteArray(), m, m2);
+      m = m < m2 ? m : m2;
     }
-    return estimateSize(R, getAlpha(R.length));
+    return estimateSize(R, m, getAlpha(m));
   }
 
 
   private static double totalSize(List<HLLCounter> hs) {
-    byte[] R = new byte[hs.get(0).getByteArray().length];
+    byte[][] R = new byte[hs.get(0).getShards()][];
+    int m = (1 << hs.get(0).getP());
     for(int i = 0; i < hs.size(); i++) {
-      R = safeUnion(R, hs.get(i).getByteArray());
+      int m2 = (1 << hs.get(i).getP());
+      R = safeUnion(R, hs.get(i).getByteArray(), m, m2);
+      m = m < m2 ? m : m2;
     }
-    return estimateSize(R, getAlpha(R.length));
+    return estimateSize(R, m, getAlpha(m));
   }
 
 
@@ -659,16 +725,28 @@ public class HLLCounter implements Serializable {
      @return      the <code>double</code> estimate of the 
                   cardinality
   */
-  private static double estimateSize(byte[] Q, double alpha) {
+  private static double estimateSize(byte[][] Q, int q_max_len, double alpha) {
     double E = 0.0;
     int count = 0;
-    int q = Q.length;
+    int q = q_max_len;
     byte w = (byte)Math.round(Math.log(q)/LOG_2);
-    for(byte b : Q) {
-      if(b == (byte)0) {
-        count++;
+    int l = (1 << (w / 2));
+    for(byte[] ba : Q) {
+      if (ba == null) {
+        E += l;
+        count += l;
+      } else {
+        for (byte b : ba) {
+          if (b == (byte) 0) {
+            count++;
+            E += 1;
+          } else if (b <= 63) {
+            E += 1.0 / (double)(1L << b);
+          } else {
+            E += Math.pow(2.0, -1 * b);
+          }
+        }
       }
-      E += Math.pow(2.0, -1 * b);
     }
     E = alpha * Math.pow(q, 2) * (1.0/E);
     E = (E < 5*q) ? (E - estimateBias(E, w)) : E;

@@ -4,14 +4,13 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.TreeSet;
 
 import org.apache.hadoop.io.Writable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.adroll.cantor.HLLCounter;
 
 /**
    <code>HLLWritable</code> allows for serialization and 
@@ -25,15 +24,15 @@ public class HLLWritable implements Writable, Serializable {
   /** The HLL precision of the contained <code>HLLCounter</code> represenation. 
       {@link HLLCounter#MIN_P}<code> &lt;= p &lt;= </code>{@link HLLCounter#MAX_P}.
   */
-  protected byte p; 
+  protected byte p;
   /** The MinHash precision of the contained <code>HLLCounter</code> representation. */
   protected int k;
   /** The number of current elements in the MinHash structure 
       of the contained <code>HLLCounter</code> representation. */
   protected int s;
   /** The HLL structure of the contained <code>HLLCounter</code> representation. */
-  protected byte[] M;
-  /** The contents of the MinHash structure of the contained 
+  protected byte[][] M;
+  /** The contents of the MinHash structure of the contained
       <code>HLLCounter</code> representation.*/
   protected long[] minhash;
 
@@ -70,7 +69,7 @@ public class HLLWritable implements Writable, Serializable {
      @param minhash   the <code>long[]</code> elements in the MinHash 
                       structure
   */
-  public HLLWritable(byte p, int k, int s, byte[] M, long[] minhash){
+  public HLLWritable(byte p, int k, int s, byte[][] M, long[] minhash){
     this.p = p;
     this.k = k;
     this.s = s;
@@ -148,7 +147,7 @@ public class HLLWritable implements Writable, Serializable {
 
     byte newP = (byte)Math.min(p, other.p);
     int newK = Math.min(k, other.k);
-    byte[] newM = HLLCounter.safeUnion(M, other.M);
+    byte[][] newM = HLLCounter.safeUnion(M, other.M, (1 << p), (1 << other.p));
     // newMinhash will hold at most newK elements, but possibly less
     long[] newMinhash = new long[newK];
     int i=0, j=0;
@@ -219,12 +218,17 @@ public class HLLWritable implements Writable, Serializable {
         out.writeByte(p);
         out.writeInt(k);
         out.writeInt(s);
-        for(byte b : M){
-          out.writeByte(b);
+        int l = (1 << p) / M.length;
+        for(byte[] ba : M){
+          if (ba == null) {
+            out.write(new byte[l]);
+          } else {
+            out.write(ba);
+          }
         }
-        for(int i=0; i < s; i++){
-          out.writeLong(minhash[i]);
-        }
+        ByteBuffer bb = ByteBuffer.allocate(8 * s);
+        bb.asLongBuffer().put(minhash);
+        out.write(bb.array());
       }
     } catch(Exception e){
       LOG.warn("Failed writing", e);
@@ -243,36 +247,63 @@ public class HLLWritable implements Writable, Serializable {
   */
   public void readFields(DataInput in) throws IOException {
     try {
-      p = in.readByte(); 
+      p = in.readByte();
       k = in.readInt();
       s = in.readInt();
       if(k == 0) {
         s = 0;
       }
+      byte shardP;
+      int shards;
       // If p is negative, M does not exist
       if (p < 0) {
         p = (byte) -p;
-        int m = (int)Math.pow(2, p);
-        M = new byte[m];
+        shardP = (byte)(p / 2);
+        shards = 1 << (p / 2 + p % 2);
+        int m = (1 << p);
+        M = new byte[shards][];
       } else {
-        int m = (int)Math.pow(2, p);
-        M = new byte[m];
-        for(int i = 0; i < m; i++) {
-          M[i] = in.readByte();
+        shardP = (byte)(p / 2);
+        shards = 1 << (p / 2 + p % 2);
+        int m = (1 << p);
+        M = new byte[shards][];
+        int l = m / shards;
+        byte[] t = new byte[m];
+        in.readFully(t, 0, m);
+        int i = 0;
+        while (i < m) {
+          if (t[i] != 0) {
+            M[i / l] = Arrays.copyOfRange(t, i / l * l, (i / l + 1) * l);
+            i = (i / l + 1) * l;
+          } else {
+            i++;
+          }
         }
       }
       minhash = new long[s];
 
-      for(int i = 0; i < s; i++) {
-        long x = in.readLong();
-        minhash[i] = x;
+      int m = (1 << p);
+      byte[] data = new byte[s*8];
+      in.readFully(data, 0, s*8);
+      ByteBuffer.wrap(data).asLongBuffer().get(minhash);
         /**
          * If p was negative, M is empty and we need to re-populate
          * If p was positive and we read M, this won't change anything since it's just max
          */
-        int idx = (int)(x >>> (64 - p));
-        long w = x << p;
-        M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+      if (s < k) {
+        for (int i = 0; i < s; i++) {
+          long x = minhash[i];
+          int idx = (int) (x >>> (64 - p));
+          int idx2 = idx % (m / shards);
+          idx = idx >>> (shardP);
+          long w = x << p;
+          if (M[idx] == null) {
+            M[idx] = new byte[m / shards];
+          }
+          if (s < k) {
+            M[idx][idx2] = (byte) Math.max(M[idx][idx2], Long.numberOfLeadingZeros(w) + 1);
+          }
+        }
       }
     } catch(Exception e) {
       throw new IOException(e);

@@ -221,11 +221,11 @@ public class TestHLLWritable {
   @Test
   public void test_combine_empty() throws Exception {
     HLLWritable empty =  
-      new HLLWritable((byte)15, Integer.MAX_VALUE, 0, new byte[(int)Math.pow(2, (byte)15)], new long[0]);
+      new HLLWritable((byte)15, Integer.MAX_VALUE, 0, new byte[256][], new long[0]);
     assertEquals(0, empty.get().getMinHash().size());
     
     HLLWritable empty2 =
-      new HLLWritable((byte)15, 8192, 0, new byte[(int)Math.pow(2, (byte)15)], new long[0]);
+      new HLLWritable((byte)15, 8192, 0, new byte[256][], new long[0]);
     assertEquals(0, empty2.get().getMinHash().size());
     
     empty = empty.combine(empty2);
