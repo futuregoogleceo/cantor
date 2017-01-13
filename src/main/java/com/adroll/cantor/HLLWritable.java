@@ -4,6 +4,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.TreeSet;
 
@@ -220,9 +221,9 @@ public class HLLWritable implements Writable, Serializable {
         for(int i = 0; i < M.length; i++){
           out.writeByte(M.get(i));
         }
-        for(int i=0; i < s; i++){
-          out.writeLong(minhash[i]);
-        }
+        ByteBuffer bb = ByteBuffer.allocate(8 * s);
+        bb.asLongBuffer().put(minhash);
+        out.write(bb.array());
       }
     } catch(Exception e){
       LOG.warn("Failed writing", e);
@@ -254,23 +255,28 @@ public class HLLWritable implements Writable, Serializable {
         M = new HLLByteArray(m);
       } else {
         int m = (int)Math.pow(2, p);
-        M = new HLLByteArray(m);
-        for(int i = 0; i < m; i++) {
-          M.put(i, in.readByte());
-        }
+        byte[] t = new byte[m];
+        in.readFully(t, 0, m);
+        M = new HLLByteArray(t);
       }
       minhash = new long[s];
 
-      for(int i = 0; i < s; i++) {
-        long x = in.readLong();
-        minhash[i] = x;
-        /**
-         * If p was negative, M is empty and we need to re-populate
-         * If p was positive and we read M, this won't change anything since it's just max
-         */
-        int idx = (int)(x >>> (64 - p));
-        long w = x << p;
-        M.put(idx, M.get(idx) > Long.numberOfLeadingZeros(w) + 1 ? M.get(idx) : (byte)(Long.numberOfLeadingZeros(w) + 1));
+      byte[] data = new byte[s*8];
+      in.readFully(data, 0, s*8);
+      ByteBuffer.wrap(data).asLongBuffer().get(minhash);
+
+      long x;
+      if (s < k) {
+        for (int i = 0; i < s; i++) {
+          x = minhash[i];
+          /**
+           * If p was negative, M is empty and we need to re-populate
+           * If p was positive and we read M, this won't change anything since it's just max
+           */
+          int idx = (int) (x >>> (64 - p));
+          long w = x << p;
+          M.put(idx, M.get(idx) > Long.numberOfLeadingZeros(w) + 1 ? M.get(idx) : (byte) (Long.numberOfLeadingZeros(w) + 1));
+        }
       }
     } catch(Exception e) {
       throw new IOException(e);

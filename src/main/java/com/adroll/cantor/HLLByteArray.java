@@ -22,6 +22,23 @@ public class HLLByteArray implements Serializable {
         b_data = new byte[shards][];
     }
 
+    public HLLByteArray(byte[] src) {
+        this.length = src.length;
+        int p = Integer.numberOfTrailingZeros(src.length);
+        this.shards = 1 << (p / 2 + p % 2);
+        this.shard_size = 1 << (p / 2);
+        b_data = new byte[shards][];
+
+        for (int i = 0; i < src.length;) {
+            if (src[i] != 0) {
+                b_data[i / this.shard_size] = Arrays.copyOfRange(src, i / shard_size * shard_size, (i / shard_size + 1) * shard_size);
+                i = (i / shard_size + 1) * shard_size;
+            } else {
+                i++;
+            }
+        }
+    }
+
     public void put(int index, byte value) {
         if (value == 0)
             return;
