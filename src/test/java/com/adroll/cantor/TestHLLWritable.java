@@ -36,7 +36,7 @@ public class TestHLLWritable {
     assertEquals(3L, d.size());
     assertEquals(HLLCounter.DEFAULT_K, d.getK());
     assertTrue(d.isIntersectable());
-    assertArrayEquals(hll.getByteArray(), d.getByteArray());
+    assertEquals(hll.getByteArray(), d.getByteArray());
     assertArrayEquals(hll.getMinHash().toArray(), d.getMinHash().toArray());
   }
   
@@ -61,7 +61,7 @@ public class TestHLLWritable {
     assertEquals(0, d.getK());
     assertFalse(d.isIntersectable());
     assertNull(d.getMinHash());
-    assertArrayEquals(hll.getByteArray(), d.getByteArray());
+    assertEquals(hll.getByteArray(), d.getByteArray());
   }
   
   @Test
@@ -85,7 +85,7 @@ public class TestHLLWritable {
     assertEquals(5L, d.size());
     assertEquals(3, d.getK());
     assertTrue(d.isIntersectable());
-    assertArrayEquals(hll.getByteArray(), d.getByteArray());
+    assertEquals(hll.getByteArray(), d.getByteArray());
     assertArrayEquals(hll.getMinHash().toArray(), d.getMinHash().toArray());
   }
   
@@ -117,7 +117,7 @@ public class TestHLLWritable {
     assertEquals(5L, d.size());
     assertEquals(256, d.getK());
     assertTrue(d.isIntersectable());
-    assertArrayEquals(hll.getByteArray(), d.getByteArray());
+    assertEquals(hll.getByteArray(), d.getByteArray());
     assertArrayEquals(hll.getMinHash().toArray(), d.getMinHash().toArray());
   }
     
@@ -221,11 +221,11 @@ public class TestHLLWritable {
   @Test
   public void test_combine_empty() throws Exception {
     HLLWritable empty =  
-      new HLLWritable((byte)15, Integer.MAX_VALUE, 0, new byte[(int)Math.pow(2, (byte)15)], new long[0]);
+      new HLLWritable((byte)15, Integer.MAX_VALUE, 0, new HLLByteArray((int)Math.pow(2, (byte)15)), new long[0]);
     assertEquals(0, empty.get().getMinHash().size());
     
     HLLWritable empty2 =
-      new HLLWritable((byte)15, 8192, 0, new byte[(int)Math.pow(2, (byte)15)], new long[0]);
+      new HLLWritable((byte)15, 8192, 0, new HLLByteArray((int)Math.pow(2, (byte)15)), new long[0]);
     assertEquals(0, empty2.get().getMinHash().size());
     
     empty = empty.combine(empty2);
