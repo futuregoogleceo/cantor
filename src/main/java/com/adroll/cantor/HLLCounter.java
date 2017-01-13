@@ -39,7 +39,7 @@ public class HLLCounter implements Serializable {
   */
   private double a;
   /** HLL array */
-  private byte[] M;
+  private HLLByteArray M;
   /** whether MinHash structure is kept */
   private boolean intersectable;
   /** MinHash structure */
@@ -152,12 +152,12 @@ public class HLLCounter implements Serializable {
                           intersectable
      @param k             the <code>int</code> precision of MinHash 
                           structure
-     @param M             the <code>byte[]</code> HLL structure of 
+     @param M             the <code>HLLByteArray</code> HLL structure of
                           length 2^<code>p</code>
      @param ts            the <code>TreeSet&lt;Long&gt;</code> MinHash structure of 
                           length <code>k</code>
    */
-  public HLLCounter(byte p, boolean intersectable, int k , byte[] M, TreeSet<Long> ts) {
+  public HLLCounter(byte p, boolean intersectable, int k , HLLByteArray M, TreeSet<Long> ts) {
     if((int)Math.pow(2, p) != M.length) {
       throw new IllegalArgumentException("Byte array must have length = 2^precision.");
     }
@@ -202,7 +202,7 @@ public class HLLCounter implements Serializable {
     this.p = p;
     m = (int)Math.pow(2, p);
     a = getAlpha(m);
-    M = new byte[m];
+    M = new HLLByteArray(m);
     this.intersectable = intersectable;
     this.k = k;
     if(intersectable) {
@@ -217,7 +217,7 @@ public class HLLCounter implements Serializable {
      <p>
      The <code>String v</code> is hashed to a <code>long</code>, 
      which, by the HLL algorithm is inserted in the HLL 
-     <code>byte[]</code>.
+     <code>HLLByteArray</code>.
      <p>
      Additionally, if this <code>HLLCounter</code> is intersectable, 
      the <code>long</code> is added to the MinHash 
@@ -248,7 +248,7 @@ public class HLLCounter implements Serializable {
     }
     int idx = (int)(x >>> (64 - p));
     long w = x << p;
-    M[idx] =  (byte)Math.max(M[idx], Long.numberOfLeadingZeros(w) + 1);
+    M.put(idx, M.get(idx) > Long.numberOfLeadingZeros(w) + 1 ? M.get(idx) : (byte)(Long.numberOfLeadingZeros(w) + 1));
   }
 
   /**
@@ -287,7 +287,7 @@ public class HLLCounter implements Serializable {
      Clears all data in the HLL and MinHash structures.
   */
   public void clear() {
-    M = new byte[m];
+    M = new HLLByteArray(m);
     if(intersectable) {
       ts.clear();
     }      
@@ -369,11 +369,9 @@ public class HLLCounter implements Serializable {
   /**
      Returns the raw HLL structure.
 
-     @return the <code>byte[]</code> of the HLL
+     @return the <code>HLLByteArray</code> of the HLL
   */
-  public byte[] getByteArray() {
-    return M;
-  }
+  public HLLByteArray getByteArray() { return M; }
 
   /**
      Returns the precision of the HLL structure.
@@ -541,24 +539,21 @@ public class HLLCounter implements Serializable {
      This method is primarily used for non-destructive unions,
      unlike the {@link #combine(HLLCounter h)} method.
      
-     @param Q the <code>byte[]</code> first HLL structure 
+     @param Q the <code>HLLByteArray</code> first HLL structure
               to union
-     @param R the <code>byte[]</code> second HLL structure 
+     @param R the <code>HLLByteArray</code> second HLL structure
               to union
 
-     @return  the <code>byte[]</code> HLL structure of 
+     @return  the <code>HLLByteArray</code> HLL structure of
               the union
   */
-  public static byte[] safeUnion(byte[] Q, byte[] R) {
+  public static HLLByteArray safeUnion(HLLByteArray Q, HLLByteArray R) {
     byte q = (byte)Math.round((Math.log(Q.length)/LOG_2));
     byte r = (byte)Math.round((Math.log(R.length)/LOG_2));
     byte minp = (byte)Math.min(q, r);
-    byte[] S = safeFold(Q, minp);
-    byte[] T = safeFold(R, minp);
-    for(int i = 0; i < S.length; i++) {
-      S[i] = (byte)Math.max(S[i], T[i]);
-    }
-    return S;
+    HLLByteArray S = safeFold(Q, minp);
+    HLLByteArray T = safeFold(R, minp);
+    return S.merge(T);
   }
 
   /**
@@ -566,30 +561,30 @@ public class HLLCounter implements Serializable {
      <p>
      This is a non-destructive form of {@link #fold(byte q)}.
 
-     @param N the <code>byte[]</code>HLL structure to fold
+     @param N the <code>HLLByteArray</code></code>HLL structure to fold
      @param q the <code>byte</code> new precision
 
-     @return  the <code>byte[]</code> HLL structure of
+     @return  the <code>HLLByteArray</code></code> HLL structure of
               reduced precision
   */
-  private static byte[] safeFold(byte[] N, byte q) {
+  private static HLLByteArray safeFold(HLLByteArray N, byte q) {
     byte r = (byte)Math.round((Math.log(N.length)/LOG_2));
     if(q >= r) {
       return N;
     }
-    byte[] R;
+    HLLByteArray R;
     if(r - q > 1) {
       N = safeFold(N, (byte)(q + 1));
     }
     int o = N.length/2;
-    R = new byte[o];
+    R = new HLLByteArray(o);
     for(int i = 0; i < o; i++) {
-      byte b0 = N[2 * i];
-      byte b1 = N[2 * i + 1];
+      byte b0 = N.get(2 * i);
+      byte b1 = N.get(2 * i + 1);
       if(b0 == 0 && b1 == 0) {
-        R[i] = (byte)0;
+        R.put(i, (byte)0);
       } else {
-        R[i] = (byte)(b0 + 1);
+        R.put(i, (byte)(b0 + 1));
       }
     }
     return R;
@@ -607,7 +602,7 @@ public class HLLCounter implements Serializable {
      @return the <code>double</code> estimate of cardinality
   */
   private static double totalSize(HLLCounter ... hs) {
-    byte[] R = new byte[hs[0].getByteArray().length];
+    HLLByteArray R = new HLLByteArray(hs[0].getByteArray().length);
     for(int i = 0; i < hs.length; i++) {
       R = safeUnion(R, hs[i].getByteArray());
     }
@@ -616,7 +611,7 @@ public class HLLCounter implements Serializable {
 
 
   private static double totalSize(List<HLLCounter> hs) {
-    byte[] R = new byte[hs.get(0).getByteArray().length];
+    HLLByteArray R = new HLLByteArray(hs.get(0).getByteArray().length);
     for(int i = 0; i < hs.size(); i++) {
       R = safeUnion(R, hs.get(i).getByteArray());
     }
@@ -651,7 +646,7 @@ public class HLLCounter implements Serializable {
      a great range for the HLL algorithm. Past that range, a 
      classic HLL algorithm is used.
 
-     @param Q     the <code>byte[]</code> HLL structure to 
+     @param Q     the <code>HLLByteArray</code> HLL structure to
                   estimate the size of
      @param alpha the <code>double</code> estimate of the 
                   integral term
@@ -659,16 +654,16 @@ public class HLLCounter implements Serializable {
      @return      the <code>double</code> estimate of the 
                   cardinality
   */
-  private static double estimateSize(byte[] Q, double alpha) {
+  public static double estimateSize(HLLByteArray Q, double alpha) {
     double E = 0.0;
     int count = 0;
     int q = Q.length;
     byte w = (byte)Math.round(Math.log(q)/LOG_2);
-    for(byte b : Q) {
-      if(b == (byte)0) {
+    for(int i = 0; i < Q.length; i++) {
+      if(Q.get(i) == 0) {
         count++;
       }
-      E += Math.pow(2.0, -1 * b);
+      E += Math.pow(2.0, -1 * Q.get(i));
     }
     E = alpha * Math.pow(q, 2) * (1.0/E);
     E = (E < 5*q) ? (E - estimateBias(E, w)) : E;
