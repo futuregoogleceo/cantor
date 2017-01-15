@@ -3,9 +3,7 @@ package com.adroll.cantor;
 import java.io.Serializable;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Iterator;
-import java.util.List;
-import java.util.TreeSet;
+import java.util.*;
 
 /** <code>HLLCounter</code> allows for cardinality estimation of 
     large sets with a compact data structure.
@@ -439,46 +437,11 @@ public class HLLCounter implements Serializable {
     if (hs.length == 0) {
       return 0;
     }
+    ArrayList l = new ArrayList();
     for (HLLCounter hll : hs) {
-      if (hll.size() == 0) {
-        return 0;
-      }
+      l.add(hll);
     }
-    TreeSet<Long> all = new TreeSet<Long>();
-    int mink = Integer.MAX_VALUE;
-    int maxs = Integer.MIN_VALUE;
-    for(HLLCounter h : hs) {
-      if(h.isIntersectable()) {
-        all.addAll(h.getMinHash());
-        mink = Math.min(mink, h.getK());
-        maxs = Math.max(maxs, h.getMinHash().size());
-      }
-    }
-    mink = maxs < mink ? maxs : mink;
-    int result = 0;
-    for(int i = 0; i < mink; i++) {
-      long l = 0;
-      try {
-        l = all.pollFirst();
-      } catch(NullPointerException e) {
-        //This can happen if k is larger than
-        //the number of insertions.
-        break;
-      }
-      boolean allContain = true;
-      for(HLLCounter h : hs) {
-        if(h.isIntersectable()) {
-          if(!h.getMinHash().contains(l)) {
-            allContain = false;
-            break;
-          }
-        }
-      }
-      if(allContain) {
-        result += 1;
-      }
-    }
-    return (long)Math.round(((double)result)/((double)mink) * totalSize(hs));
+    return intersect(l);
   }
 
 
