@@ -481,41 +481,48 @@ public class HLLCounter implements Serializable {
       return 0;
     }
     for (HLLCounter hll : hs) {
-      if (hll.size() == 0) {
+      if ((hll.getMinHash() == null && hll.size() == 0) || hll.getMinHash().size() == 0) {
         return 0;
       }
     }
-    TreeSet<Long> all = new TreeSet<Long>();
     int mink = Integer.MAX_VALUE;
     int maxs = Integer.MIN_VALUE;
+    ArrayList<Long[]> minhash_arrays = new ArrayList();
     for(HLLCounter h : hs) {
       if(h.isIntersectable()) {
-        all.addAll(h.getMinHash());
+        minhash_arrays.add(h.getMinHash().toArray(new Long[0]));
         mink = Math.min(mink, h.getK());
         maxs = Math.max(maxs, h.getMinHash().size());
       }
     }
+    // The indices in the different minhashes where we are checking
+    // if the values match
+    int[] c_idx = new int[minhash_arrays.size()];
     mink = maxs < mink ? maxs : mink;
     int result = 0;
-    for(int i = 0; i < mink; i++) {
-      long l = 0;
-      try {
-        l = all.pollFirst();
-      } catch(NullPointerException e) {
-        //This can happen if k is larger than
-        //the number of insertions.
-        break;
-      }
-      boolean allContain = true;
-      for(HLLCounter h : hs) {
-        if(h.isIntersectable()) {
-          if(!h.getMinHash().contains(l)) {
-            allContain = false;
-            break;
-          }
+    long min;
+    boolean inAllSets = true;
+    boolean changed = false;
+    for (int k = 0; k < mink; k++) {
+      min = minhash_arrays.get(0)[c_idx[0]];
+      inAllSets = true;
+      changed = false;
+      for (int i = 1; i < minhash_arrays.size(); i++) {
+        if (minhash_arrays.get(i)[c_idx[i]] < min && !changed) {
+          min = minhash_arrays.get(i)[c_idx[i]];
+          c_idx[i]++;
+          changed = true;
+          inAllSets = false;
+        } else if (minhash_arrays.get(i)[c_idx[i]] > min) {
+          inAllSets = false;
+        } else if (minhash_arrays.get(i)[c_idx[i]] == min) {
+          c_idx[i]++;
         }
       }
-      if(allContain) {
+      if (!changed) {
+        c_idx[0]++;
+      }
+      if(inAllSets) {
         result += 1;
       }
     }
