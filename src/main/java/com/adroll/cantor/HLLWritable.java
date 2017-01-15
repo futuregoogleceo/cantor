@@ -218,9 +218,7 @@ public class HLLWritable implements Writable, Serializable {
         out.writeByte(p);
         out.writeInt(k);
         out.writeInt(s);
-        for(int i = 0; i < M.length; i++){
-          out.writeByte(M.get(i));
-        }
+        M.write(out);
         ByteBuffer bb = ByteBuffer.allocate(8 * s);
         bb.asLongBuffer().put(minhash);
         out.write(bb.array());
