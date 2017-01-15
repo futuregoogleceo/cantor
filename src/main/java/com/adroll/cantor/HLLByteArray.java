@@ -1,5 +1,6 @@
 package com.adroll.cantor;
 
+import java.io.DataOutput;
 import java.io.Serializable;
 import java.util.Arrays;
 
@@ -87,7 +88,25 @@ public class HLLByteArray implements Serializable {
         return a;
     }
 
-    public byte[] getShard(int shard_index) {
+    public void write(DataOutput out) {
+        try {
+            byte[] a = null;
+            for (byte[] bd : b_data) {
+                if (bd == null && a == null) {
+                    a = new byte[shard_size];
+                    out.write(a);
+                } else if (bd == null) {
+                    out.write(a);
+                } else {
+                    out.write(bd);
+                }
+            }
+        } catch (Exception e) {
+
+        }
+    }
+
+    private byte[] getShard(int shard_index) {
         return b_data[shard_index];
     }
 
@@ -95,7 +114,7 @@ public class HLLByteArray implements Serializable {
         return shards;
     }
 
-    public byte[][] getBData() {
+    private byte[][] getBData() {
         return b_data;
     }
 
