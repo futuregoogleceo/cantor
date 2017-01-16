@@ -92,7 +92,7 @@ public class HLLByteArray implements Serializable {
         return a;
     }
 
-    public void write(DataOutput out) {
+    public void write(DataOutput out) throws Exception {
         try {
             byte[] a = null;
             for (byte[] bd : b_data) {
@@ -106,7 +106,7 @@ public class HLLByteArray implements Serializable {
                 }
             }
         } catch (Exception e) {
-
+            throw e;
         }
     }
 
