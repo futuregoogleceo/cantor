@@ -30,13 +30,17 @@ public class HLLByteArray implements Serializable {
         b_data = new byte[shards][];
     }
 
-    public HLLByteArray(byte[] src) {
+    public HLLByteArray(byte[] src) throws Exception {
+        if (Integer.bitCount(src.length) != 1) {
+            throw new Exception("HLLByteArray length must be a power of 2");
+        }
         this.length = src.length;
         int p = Integer.numberOfTrailingZeros(src.length);
         this.shards = 1 << (p / 2 + p % 2);
         this.shard_size = 1 << (p / 2);
         b_data = new byte[shards][];
 
+        // Break the source array into shards and store them in the right spots
         for (int i = 0; i < src.length;) {
             if (src[i] != 0) {
                 b_data[i / this.shard_size] = Arrays.copyOfRange(src, i / shard_size * shard_size, (i / shard_size + 1) * shard_size);
