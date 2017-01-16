@@ -59,9 +59,6 @@ public class HLLByteArray implements Serializable {
         byte[][] b_data = b.getBData();
         for (int i = 0; i < b_data.length; i++) {
             if (a_data[i] != null && b_data[i] != null) {
-                if (a_data[i] == null) {
-                    a_data[i] = new byte[b_data[i].length];
-                }
                 for (int j = 0; j < b_data[i].length; j++) {
                     a_data[i][j] = a_data[i][j] > b_data[i][j] ? a_data[i][j] : b_data[i][j];
                 }
