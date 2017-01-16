@@ -14,9 +14,16 @@ public class HLLByteArray implements Serializable {
 
     private byte[][] b_data;
 
-    public HLLByteArray(int length) {
+    public HLLByteArray(int length) throws Exception {
+        if (Integer.bitCount(length) != 1) {
+            throw new Exception("HLLByteArray length must be a power of 2");
+        }
         this.length = length;
+
+        // Number of bits required to address all the values stored
+        // in this byte array
         int p = Integer.numberOfTrailingZeros(length);
+
         this.shards = 1 << (p / 2 + p % 2);
         this.shard_size = 1 << (p / 2);
         b_data = new byte[shards][];
