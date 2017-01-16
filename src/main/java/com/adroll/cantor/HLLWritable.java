@@ -264,13 +264,18 @@ public class HLLWritable implements Writable, Serializable {
       ByteBuffer.wrap(data).asLongBuffer().get(minhash);
 
       long x;
+      /**
+       * s is the number of elements in the minhash
+       * k is the maximum number of elements the minhash can hold
+       * if s is less than k, then the hash values for all the elements that
+       * have ever been added to the HLLCounter/HLLWritable reside in the
+       * minhash. In that case, only the minhash was written to disk and the
+       * HLL structure has to be repopulated. If k is not less than s, then
+       * the HLL structure was already read from disk.
+       */
       if (s < k) {
         for (int i = 0; i < s; i++) {
           x = minhash[i];
-          /**
-           * If p was negative, M is empty and we need to re-populate
-           * If p was positive and we read M, this won't change anything since it's just max
-           */
           int idx = (int) (x >>> (64 - p));
           long w = x << p;
           M.put(idx, M.get(idx) > Long.numberOfLeadingZeros(w) + 1 ? M.get(idx) : (byte) (Long.numberOfLeadingZeros(w) + 1));
