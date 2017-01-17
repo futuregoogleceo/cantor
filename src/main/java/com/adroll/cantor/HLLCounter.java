@@ -662,8 +662,15 @@ public class HLLCounter implements Serializable {
     for(int i = 0; i < Q.length; i++) {
       if(Q.get(i) == 0) {
         count++;
+        E++;
+      } else if (Q.get(i) < 63) {
+        /*  Math.pow is an expensive operation. We can often get away
+            with this method for computing powers of 2
+         */
+        E += 1.0 / (double)(1L << Q.get(i));
+      } else {
+        E += Math.pow(2.0, -1 * Q.get(i));
       }
-      E += Math.pow(2.0, -1 * Q.get(i));
     }
     E = alpha * Math.pow(q, 2) * (1.0/E);
     E = (E < 5*q) ? (E - estimateBias(E, w)) : E;
