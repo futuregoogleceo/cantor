@@ -30,9 +30,9 @@ public class HLLByteArray implements Serializable {
         b_data = new byte[shards][];
     }
 
-    public HLLByteArray(byte[] src) throws Exception {
-        if (Integer.bitCount(src.length) != 1) {
-            throw new Exception("HLLByteArray length must be a power of 2");
+    public HLLByteArray(byte[] src) {
+        if (Integer.bitCount(src.length) != 1 || length <= 0) {
+            throw new IllegalArgumentException("HLLByteArray length must be a power of 2");
         }
         this.length = src.length;
         int p = Integer.numberOfTrailingZeros(src.length);
