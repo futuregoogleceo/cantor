@@ -31,7 +31,7 @@ public class HLLByteArray implements Serializable {
     }
 
     public HLLByteArray(byte[] src) {
-        if (Integer.bitCount(src.length) != 1 || length <= 0) {
+        if (Integer.bitCount(src.length) != 1 || src.length <= 0) {
             throw new IllegalArgumentException("HLLByteArray length must be a power of 2");
         }
         this.length = src.length;
