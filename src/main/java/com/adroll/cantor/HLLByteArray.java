@@ -14,9 +14,9 @@ public class HLLByteArray implements Serializable {
 
     private byte[][] b_data;
 
-    public HLLByteArray(int length) throws Exception {
-        if (Integer.bitCount(length) != 1) {
-            throw new Exception("HLLByteArray length must be a power of 2");
+    public HLLByteArray(int length) {
+        if (Integer.bitCount(length) != 1 || length <= 0) {
+            throw new IllegalArgumentException("HLLByteArray length must be a power of 2");
         }
         this.length = length;
 
