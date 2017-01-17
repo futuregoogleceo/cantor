@@ -490,6 +490,10 @@ public class HLLCounter implements Serializable {
     ArrayList<Long[]> minhash_arrays = new ArrayList();
     for(HLLCounter h : hs) {
       if(h.isIntersectable()) {
+        /**
+         * TreeSets are iterable in ascending order. A TreeSet converted into
+         * an array is guaranteed to be in ascending order.
+         */
         minhash_arrays.add(h.getMinHash().toArray(new Long[0]));
         mink = Math.min(mink, h.getK());
         maxs = Math.max(maxs, h.getMinHash().size());
