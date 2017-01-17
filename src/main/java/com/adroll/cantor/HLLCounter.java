@@ -506,28 +506,30 @@ public class HLLCounter implements Serializable {
     int result = 0;
     long min;
     boolean inAllSets = true;
-    boolean changed = false;
+    boolean shortCircuit = false;
     for (int k = 0; k < mink; k++) {
       min = minhash_arrays.get(0)[c_idx[0]];
-      inAllSets = true;
-      changed = false;
       for (int i = 1; i < minhash_arrays.size(); i++) {
-        if (minhash_arrays.get(i)[c_idx[i]] < min && !changed) {
+        if (minhash_arrays.get(i)[c_idx[i]] < min) {
           min = minhash_arrays.get(i)[c_idx[i]];
-          c_idx[i]++;
-          changed = true;
-          inAllSets = false;
-        } else if (minhash_arrays.get(i)[c_idx[i]] > min) {
-          inAllSets = false;
-        } else if (minhash_arrays.get(i)[c_idx[i]] == min) {
-          c_idx[i]++;
         }
       }
-      if (!changed) {
-        c_idx[0]++;
+      inAllSets = true;
+      for (int i = 0; i < minhash_arrays.size(); i++) {
+        if (minhash_arrays.get(i)[c_idx[i]] == min) {
+          c_idx[i]++;
+          if (c_idx[i] >= minhash_arrays.get(i).length) {
+            shortCircuit = true;
+          }
+        } else {
+          inAllSets = false;
+        }
       }
       if(inAllSets) {
         result += 1;
+      }
+      if(shortCircuit || c_idx[0] >= minhash_arrays.get(0).length) {
+        break;
       }
     }
     return (long)Math.round(((double)result)/((double)mink) * totalSize(hs));
