@@ -688,7 +688,7 @@ public class HLLCounter implements Serializable {
       if(Q.get(i) == 0) {
         count++;
         E++;
-      } else if (Q.get(i) < 64) {
+      } else if (Q.get(i) < 63) {
         /*  Math.pow is an expensive operation. We can often get away
             with this method for computing powers of 2
          */
