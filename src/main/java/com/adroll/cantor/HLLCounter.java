@@ -487,38 +487,39 @@ public class HLLCounter implements Serializable {
     }
     int mink = Integer.MAX_VALUE;
     int maxs = Integer.MIN_VALUE;
-    ArrayList<Long[]> minhash_arrays = new ArrayList();
+    ArrayList<Iterator<Long>> minhash_its = new ArrayList();
     for(HLLCounter h : hs) {
       if(h.isIntersectable()) {
-        /**
-         * TreeSets are iterable in ascending order. A TreeSet converted into
-         * an array is guaranteed to be in ascending order.
-         */
-        minhash_arrays.add(h.getMinHash().toArray(new Long[0]));
+        // TreeSets are iterable in ascending order
+        minhash_its.add(h.getMinHash().iterator());
         mink = Math.min(mink, h.getK());
         maxs = Math.max(maxs, h.getMinHash().size());
       }
     }
-    // The indices in the different minhashes where we are checking
-    // if the values match
-    int[] c_idx = new int[minhash_arrays.size()];
+    int minhash_cnt = minhash_its.size();
+    // The value of each minhash at the current iterator point
+    Long[] curr_values = new Long[minhash_cnt];
+    for (int i = 0; i < minhash_cnt; i++) {
+      curr_values[i] = minhash_its.get(i).next();
+    }
     mink = maxs < mink ? maxs : mink;
     int result = 0;
     long min;
     boolean inAllSets = true;
     boolean shortCircuit = false;
     for (int k = 0; k < mink; k++) {
-      min = minhash_arrays.get(0)[c_idx[0]];
-      for (int i = 1; i < minhash_arrays.size(); i++) {
-        if (minhash_arrays.get(i)[c_idx[i]] < min) {
-          min = minhash_arrays.get(i)[c_idx[i]];
+      min = curr_values[0];
+      for (int i = 1; i < minhash_cnt; i++) {
+        if (curr_values[i] < min) {
+          min = curr_values[i];
         }
       }
       inAllSets = true;
-      for (int i = 0; i < minhash_arrays.size(); i++) {
-        if (minhash_arrays.get(i)[c_idx[i]] == min) {
-          c_idx[i]++;
-          if (c_idx[i] >= minhash_arrays.get(i).length) {
+      for (int i = 0; i < minhash_cnt; i++) {
+        if (curr_values[i] == min) {
+          if (minhash_its.get(i).hasNext()) {
+            curr_values[i] = minhash_its.get(i).next();
+          } else {
             shortCircuit = true;
           }
         } else {
@@ -528,7 +529,7 @@ public class HLLCounter implements Serializable {
       if(inAllSets) {
         result += 1;
       }
-      if(shortCircuit || c_idx[0] >= minhash_arrays.get(0).length) {
+      if(shortCircuit) {
         break;
       }
     }
