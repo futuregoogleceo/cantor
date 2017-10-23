@@ -479,6 +479,8 @@ public class HLLCounter implements Serializable {
     //intersection using the MinHash algorithm.
     if (hs.size() == 0) {
       return 0;
+    } else if (hs.size() == 1 && hs.get(0).isIntersectable()) {
+      return (long)(totalSize(hs));
     }
     for (HLLCounter hll : hs) {
       if ((hll.getMinHash() == null && hll.size() == 0) || hll.getMinHash().size() == 0) {
