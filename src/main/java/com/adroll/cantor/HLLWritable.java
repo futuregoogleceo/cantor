@@ -21,6 +21,7 @@ public class HLLWritable implements Writable, Serializable {
   
   private static final Logger LOG = LoggerFactory.getLogger(HLLWritable.class);
 
+  protected static final byte VERSION = 2;
   /** The HLL precision of the contained <code>HLLCounter</code> represenation. 
       {@link HLLCounter#MIN_P}<code> &lt;= p &lt;= </code>{@link HLLCounter#MAX_P}.
   */
@@ -208,20 +209,23 @@ public class HLLWritable implements Writable, Serializable {
       // minhash is not maxed out, M is redundant so don't write it
       if (s < k) {
         // Use -p to signify no M
+        out.write(VERSION);
         out.writeByte(-p);
         out.writeInt(k);
         out.writeInt(s);
+
         for(int i=0; i < s; i++){
-          out.writeLong(minhash[i]);
+          out.write(makebytearr(minhash[i]));
         }
       } else {
+        out.write(VERSION);
         out.writeByte(p);
         out.writeInt(k);
         out.writeInt(s);
         M.write(out);
-        ByteBuffer bb = ByteBuffer.allocate(8 * s);
-        bb.asLongBuffer().put(minhash);
-        out.write(bb.array());
+        for(int i=0; i < s; i++){
+          out.write(makebytearr(minhash[i]));
+        }
       }
     } catch(Exception e){
       LOG.warn("Failed writing", e);
@@ -240,7 +244,12 @@ public class HLLWritable implements Writable, Serializable {
   */
   public void readFields(DataInput in) throws IOException {
     try {
-      p = in.readByte(); 
+      p = in.readByte();
+      // In version 2 (and higher), the version number will be
+      // the first byte
+      if (p == VERSION) {
+        p = in.readByte();
+      }
       k = in.readInt();
       s = in.readInt();
       if(k == 0) {
@@ -259,9 +268,11 @@ public class HLLWritable implements Writable, Serializable {
       }
       minhash = new long[s];
 
-      byte[] data = new byte[s*8];
-      in.readFully(data, 0, s*8);
-      ByteBuffer.wrap(data).asLongBuffer().get(minhash);
+      byte[] data = new byte[6];
+      for (int i = 0; i < s; i++) {
+        in.readFully(data);
+        minhash[i] = HLLCounter.makelong(data);
+      }
 
       long x;
       /**
@@ -284,6 +295,25 @@ public class HLLWritable implements Writable, Serializable {
     } catch(Exception e) {
       throw new IOException(e);
     }
+  }
+
+  /**
+   Returns the <code>byte[]</code> that is the last 6
+   bytes of the passed-in long
+
+   @param x the <code>long</code> to convert
+
+   @return  the <code>byte[]</code> of the last 6
+   bytes of x
+   */
+
+  private static byte[] makebytearr(long x) {
+    byte[] arr = new byte[6];
+
+    for(int i = 0; i < 6; i++) {
+      arr[i] = (byte)((x >> 8 * (i+2)) & 255);
+    }
+    return arr;
   }
 
   /**

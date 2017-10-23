@@ -245,8 +245,8 @@ public class HLLCounter implements Serializable {
       md.update(v.getBytes());
       byte[] b = md.digest();
       md.reset();
-      //We just want 64 bits
-      b = new byte[] { b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7] };
+      //We just want 48 bits
+      b = new byte[] { 0, 0, b[2], b[3], b[4], b[5], b[6], b[7] };
       x = makelong(b);
       if (updateCache) {
         md5Cache.put(v, x);
@@ -727,7 +727,7 @@ public class HLLCounter implements Serializable {
 
      @return  the <code>long</code> of this hash
   */
-  private static long makelong(byte[] x) {
+  public static long makelong(byte[] x) {
     long y = 0L;
     for(int i = 0; i < x.length; i++) {
       y += ((long)x[i] & 0xffL) << (8*(i + 8 - x.length));
