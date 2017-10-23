@@ -101,28 +101,28 @@ public class TestHLLCounter {
     Random r = new Random(4618201L);
     HLLCounter h = new HLLCounter((byte)8);
     fillHLLCounter(h, r, 25851093);
-    assertTrue(h.size() == 22787413L);
+    assertTrue(h.size() == 23296261L);
 
     r = new Random(8315542L); 
     h = new HLLCounter((byte)9); 
-    fillHLLCounter(h, r, 4954434); 
-    assertTrue(h.size() == 5013953L);
+    fillHLLCounter(h, r, 4954434);
+    assertTrue(h.size() == 4918828L);
 
     //default precision of HLLCounter.DEFAULT_P = 18
     h = new HLLCounter();
     r = new Random(73919566L); 
-    fillHLLCounter(h, r, 17078033); 
-    assertTrue(h.size() == 17034653L);
+    fillHLLCounter(h, r, 17078033);
+    assertTrue(h.size() == 17041645L);
 
     h.clear();
     r = new Random(57189216L); 
-    fillHLLCounter(h, r, 18592874); 
-    assertTrue(h.size() == 18526241L);
+    fillHLLCounter(h, r, 18592874);
+    assertTrue(h.size() == 18568108L);
 
     h.clear();
     r = new Random(10821894L);
-    fillHLLCounter(h, r, 3777716); 
-    assertTrue(h.size() == 3760602L);
+    fillHLLCounter(h, r, 3777716);
+    assertTrue(h.size() == 3764579L);
 	}
 
   @Test
@@ -180,17 +180,17 @@ public class TestHLLCounter {
       h3.put(String.valueOf(i));
     }
 
-    assertEquals(4853, HLLCounter.intersect(h0, h1)); //about 5000
-    assertEquals(1922, HLLCounter.intersect(h0, h2)); //about 2000
-    assertEquals(937, HLLCounter.intersect(h0, h3)); //about 1000
-    assertEquals(2963, HLLCounter.intersect(h1, h2)); //about 3000
-    assertEquals(958, HLLCounter.intersect(h1, h3)); //about 1000
+    assertEquals(4827, HLLCounter.intersect(h0, h1)); //about 5000
+    assertEquals(1944, HLLCounter.intersect(h0, h2)); //about 2000
+    assertEquals(928, HLLCounter.intersect(h0, h3)); //about 1000
+    assertEquals(2984, HLLCounter.intersect(h1, h2)); //about 3000
+    assertEquals(968, HLLCounter.intersect(h1, h3)); //about 1000
     assertEquals(986, HLLCounter.intersect(h2, h3)); //about 1000
-    assertEquals(1862, HLLCounter.intersect(h0, h1, h2)); //about 2000
-    assertEquals(762, HLLCounter.intersect(h0, h1, h3)); //about 1000
-    assertEquals(934, HLLCounter.intersect(h0, h2, h3)); //about 1000
-    assertEquals(958, HLLCounter.intersect(h1, h2, h3)); //about 1000
-    assertEquals(762, HLLCounter.intersect(h0, h1, h2, h3)); //about 1000
+    assertEquals(1804, HLLCounter.intersect(h0, h1, h2)); //about 2000
+    assertEquals(748, HLLCounter.intersect(h0, h1, h3)); //about 1000
+    assertEquals(956, HLLCounter.intersect(h0, h2, h3)); //about 1000
+    assertEquals(968, HLLCounter.intersect(h1, h2, h3)); //about 1000
+    assertEquals(748, HLLCounter.intersect(h0, h1, h2, h3)); //about 1000
     assertEquals(0, HLLCounter.intersect());
     assertEquals(0, HLLCounter.intersect(new HLLCounter(), h0));    
     

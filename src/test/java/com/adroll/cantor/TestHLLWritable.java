@@ -6,6 +6,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.junit.Test;
 
@@ -148,7 +150,7 @@ public class TestHLLWritable {
     HLLWritable deser1 = new HLLWritable();
     deser1.readFields(in);
     
-    assertEquals(998974, HLLCounter.intersect(deser0.get(), deser1.get()));
+    assertEquals(996309, HLLCounter.intersect(deser0.get(), deser1.get()));
   }
   
   @Test
