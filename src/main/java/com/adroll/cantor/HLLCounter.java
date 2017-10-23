@@ -730,7 +730,7 @@ public class HLLCounter implements Serializable {
   private static long makelong(byte[] x) {
     long y = 0L;
     for(int i = 0; i < x.length; i++) {
-      y += ((long)x[i]) << (8*i);
+      y += ((long)x[i] & 0xffL) << (8*(i + 8 - x.length));
     }
     return y;
   }
